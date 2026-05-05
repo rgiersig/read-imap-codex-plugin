@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "read-imap-codex-plugin",
   "version": "0.1.0",
   "description": "Read-only IMAP helper for reading recent registration and verification email bodies.",

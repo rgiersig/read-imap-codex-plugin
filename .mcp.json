@@ -1,4 +1,4 @@
-﻿{
+{
   "mcpServers": {
     "read-imap-codex-plugin": {
       "command": "node",

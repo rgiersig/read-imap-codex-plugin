@@ -1,4 +1,4 @@
-﻿{
+{
   "host": "imap.example.com",
   "port": 993,
   "secure": true,
