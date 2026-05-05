@@ -8,6 +8,8 @@ When the agent creates an account, the website password used for that registrati
 
 If the password for an existing account is unknown, the agent can try the site's password reset flow by providing the configured email address. The reset token or link should then arrive in the IMAP inbox and can be retrieved with this plugin.
 
+Registration and reset emails may take a short time to arrive. After submitting a registration, authentication, resend, or password-reset form, the agent should wait up to 30 seconds and check the inbox every 5 seconds before concluding that no message arrived.
+
 The plugin is intentionally read-only:
 
 - it opens the configured mailbox read-only
@@ -84,6 +86,8 @@ For compact `READ_IMAP_CONFIG` values, the address is derived as decoded `user@h
 ### `read_recent_messages`
 
 Reads recent IMAP messages newest-first and returns full parsed message bodies so Codex can perform the confirmation-link or code extraction itself.
+
+For website registration and password-reset flows, call this tool repeatedly after form submission for up to 30 seconds, waiting 5 seconds between attempts, because delivery can lag behind the browser workflow.
 
 Arguments:
 
