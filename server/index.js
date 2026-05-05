@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env node
+#!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
@@ -9,22 +9,88 @@ import { simpleParser } from "mailparser";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pluginRoot = path.resolve(__dirname, "..");
 
-const REGISTRATION_WORDS = [
-  "register", "registration", "verify", "verification", "confirm", "confirmation",
-  "activate", "activation", "account", "login", "sign in", "signup", "sign-up",
-  "code", "otp", "one-time", "einmal", "bestätigung", "bestaetigung", "registrierung"
-];
-
 function loadConfig() {
-  const configPath = process.env.READ_IMAP_CONFIG || path.join(pluginRoot, "config.local.json");
+  const envConfig = process.env.READ_IMAP_CONFIG;
+  if (envConfig && !fs.existsSync(envConfig)) {
+    return parseEnvConfig(envConfig);
+  }
+
+  const configPath = envConfig || path.join(pluginRoot, "config.local.json");
   if (!fs.existsSync(configPath)) {
     throw new Error(`Missing IMAP config. Copy config.example.json to config.local.json or set READ_IMAP_CONFIG. Looked at: ${configPath}`);
   }
   return JSON.parse(fs.readFileSync(configPath, "utf8"));
 }
 
+function parseBoolean(value, defaultValue) {
+  if (value === undefined) return defaultValue;
+  if (/^(1|true|yes|on)$/i.test(value)) return true;
+  if (/^(0|false|no|off)$/i.test(value)) return false;
+  throw new Error(`Invalid boolean value in READ_IMAP_CONFIG: ${value}`);
+}
+
+function parseNumber(value, fieldName) {
+  if (value === undefined) return undefined;
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    throw new Error(`Invalid numeric value for ${fieldName} in READ_IMAP_CONFIG: ${value}`);
+  }
+  return number;
+}
+
+function decodeConfigPart(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function parseEnvConfig(value) {
+  const [authorityAndPath, queryString] = String(value).split("?", 2);
+  const [authority, ...pathParts] = authorityAndPath.split("/");
+  const atIndex = authority.lastIndexOf("@");
+  const hashIndex = authority.indexOf("#");
+  if (hashIndex <= 0 || atIndex <= hashIndex + 1 || atIndex === authority.length - 1) {
+    throw new Error("Invalid READ_IMAP_CONFIG. Expected user#pass@host, optionally with :port, /mailbox, and ?secure=false&maxMessages=20&defaultSinceDays=7.");
+  }
+
+  const user = decodeConfigPart(authority.slice(0, hashIndex));
+  const pass = decodeConfigPart(authority.slice(hashIndex + 1, atIndex));
+  const hostAndPort = authority.slice(atIndex + 1);
+  const bracketedHost = hostAndPort.match(/^\[([^\]]+)\](?::(\d+))?$/);
+  const plainHost = hostAndPort.match(/^([^:]+)(?::(\d+))?$/);
+  const hostMatch = bracketedHost || plainHost;
+  if (!hostMatch) {
+    throw new Error(`Invalid host in READ_IMAP_CONFIG: ${hostAndPort}`);
+  }
+
+  const params = new URLSearchParams(queryString || "");
+  const mailboxPath = pathParts.join("/");
+  const mailbox = params.get("mailbox") || (mailboxPath ? decodeConfigPart(mailboxPath) : "INBOX");
+  const port = parseNumber(params.get("port") ?? hostMatch[2], "port") ?? 993;
+
+  return {
+    host: decodeConfigPart(hostMatch[1]),
+    port,
+    secure: parseBoolean(params.get("secure") ?? undefined, true),
+    auth: { user, pass },
+    mailbox,
+    maxMessages: parseNumber(params.get("maxMessages") ?? undefined, "maxMessages") ?? 20,
+    defaultSinceDays: parseNumber(params.get("defaultSinceDays") ?? undefined, "defaultSinceDays") ?? 7
+  };
+}
+
 function normalizeText(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function normalizeBodyText(value) {
+  return String(value || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
 }
 
 function htmlToText(html) {
@@ -38,37 +104,40 @@ function htmlToText(html) {
     .replace(/&gt;/g, ">");
 }
 
-function extractLinks(text) {
+function extractAllLinks(text) {
   const urlPattern = /https?:\/\/[^\s"'<>\])]+/gi;
   const links = new Set();
   for (const match of String(text || "").matchAll(urlPattern)) {
-    const cleaned = match[0].replace(/[.,;:!?]+$/g, "");
-    if (REGISTRATION_WORDS.some((word) => cleaned.toLowerCase().includes(word))) {
-      links.add(cleaned);
-    }
+    links.add(match[0].replace(/[.,;:!?]+$/g, ""));
   }
   return [...links];
 }
 
-function extractCodes(text) {
-  const codes = new Set();
-  const source = String(text || "");
-  const patterns = [
-    /(?:code|otp|pin|verification|confirm(?:ation)?|security code|bestätigungscode|bestaetigungscode)[^A-Z0-9]{0,30}([A-Z0-9]{4,10})/gi,
-    /\b(\d{4,8})\b/g
-  ];
-  for (const pattern of patterns) {
-    for (const match of source.matchAll(pattern)) {
-      codes.add(match[1]);
-    }
-  }
-  return [...codes].slice(0, 20);
-}
+function parsedMessageToResult(msg, parsed) {
+  const htmlText = normalizeBodyText(htmlToText(parsed.html));
+  const textBody = normalizeBodyText(parsed.text || htmlText);
+  const htmlBody = parsed.html ? String(parsed.html) : null;
+  const from = normalizeText(parsed.from?.text || msg.envelope?.from?.map((x) => x.address).join(", "));
+  const to = normalizeText(parsed.to?.text || msg.envelope?.to?.map((x) => x.address).join(", "));
+  const subject = normalizeText(parsed.subject || msg.envelope?.subject);
+  const bodyForLinks = `${parsed.text || ""}\n${parsed.html || ""}`;
 
-function messageLooksRelevant(message, bodyText, query) {
-  const haystack = `${message.subject || ""} ${message.from || ""} ${bodyText}`.toLowerCase();
-  if (query && !haystack.includes(String(query).toLowerCase())) return false;
-  return REGISTRATION_WORDS.some((word) => haystack.includes(word));
+  return {
+    uid: msg.uid,
+    date: parsed.date?.toISOString?.() || null,
+    from,
+    to,
+    subject,
+    bodyText: textBody,
+    bodyHtml: htmlBody,
+    htmlAsText: htmlText,
+    links: extractAllLinks(bodyForLinks),
+    attachments: (parsed.attachments || []).map((attachment) => ({
+      filename: attachment.filename || null,
+      contentType: attachment.contentType || null,
+      size: attachment.size || 0
+    }))
+  };
 }
 
 async function withMailbox(fn) {
@@ -89,7 +158,7 @@ async function withMailbox(fn) {
   }
 }
 
-async function findRegistrationMessages(args = {}) {
+async function readRecentMessages(args = {}) {
   return withMailbox(async (client, config) => {
     const sinceDays = Number(args.sinceDays ?? config.defaultSinceDays ?? 7);
     const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000);
@@ -97,43 +166,37 @@ async function findRegistrationMessages(args = {}) {
     const search = { since };
     if (args.fromDomain) search.from = String(args.fromDomain);
     const uids = await client.search(search, { uid: true });
-    const newest = uids.slice(-Math.max(maxMessages * 3, maxMessages)).reverse();
-    const results = [];
+    const candidateCount = args.query ? Math.max(maxMessages * 5, maxMessages) : maxMessages;
+    const newest = uids.slice(-candidateCount).reverse();
+    const messages = [];
 
     for await (const msg of client.fetch(newest, { uid: true, envelope: true, source: true })) {
       const parsed = await simpleParser(msg.source);
-      const htmlText = htmlToText(parsed.html);
-      const text = normalizeText(`${parsed.text || ""} ${htmlText}`);
-      const from = normalizeText(parsed.from?.text || msg.envelope?.from?.map((x) => x.address).join(", "));
-      const subject = normalizeText(parsed.subject || msg.envelope?.subject);
-      if (!messageLooksRelevant({ subject, from }, text, args.query)) continue;
-      const allText = `${subject}\n${from}\n${text}`;
-      results.push({
-        uid: msg.uid,
-        date: parsed.date?.toISOString?.() || null,
-        from,
-        subject,
-        codes: extractCodes(allText),
-        registrationLinks: extractLinks(`${parsed.html || ""}\n${parsed.text || ""}`),
-        snippet: text.slice(0, 500)
-      });
-      if (results.length >= maxMessages) break;
+      const result = parsedMessageToResult(msg, parsed);
+      if (args.query) {
+        const haystack = `${result.subject}\n${result.from}\n${result.to}\n${result.bodyText}\n${result.htmlAsText}\n${result.bodyHtml || ""}`.toLowerCase();
+        if (!haystack.includes(String(args.query).toLowerCase())) continue;
+      }
+      messages.push(result);
+      if (messages.length >= maxMessages) break;
     }
-    return { mailbox: config.mailbox || "INBOX", count: results.length, messages: results };
+
+    messages.sort((a, b) => (b.uid || 0) - (a.uid || 0));
+    return { mailbox: config.mailbox || "INBOX", count: messages.length, messages };
   });
 }
 
 const tools = [
   {
-    name: "find_registration_messages",
-    description: "Read recent IMAP messages and extract likely registration or verification links and codes. Read-only.",
+    name: "read_recent_messages",
+    description: "Read recent IMAP messages newest-first and return full parsed message bodies for agent-side extraction. Read-only.",
     inputSchema: {
       type: "object",
       properties: {
         sinceDays: { type: "number", description: "How many days back to search. Default comes from config." },
-        maxMessages: { type: "number", description: "Maximum matching messages to return, capped at 100." },
+        maxMessages: { type: "number", description: "Maximum messages to return, capped at 100." },
         fromDomain: { type: "string", description: "Optional sender/domain filter." },
-        query: { type: "string", description: "Optional text that must occur in sender, subject, or body." }
+        query: { type: "string", description: "Optional text that must occur in sender, recipient, subject, or body." }
       }
     }
   }
@@ -154,8 +217,12 @@ async function handle(request) {
     } else if (method === "tools/list") {
       send(id, { tools });
     } else if (method === "tools/call") {
-      if (params?.name !== "find_registration_messages") throw new Error(`Unknown tool: ${params?.name}`);
-      const data = await findRegistrationMessages(params.arguments || {});
+      const toolHandlers = {
+        read_recent_messages: readRecentMessages
+      };
+      const handler = toolHandlers[params?.name];
+      if (!handler) throw new Error(`Unknown tool: ${params?.name}`);
+      const data = await handler(params.arguments || {});
       send(id, { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] });
     } else if (id !== undefined) {
       send(id, {});
