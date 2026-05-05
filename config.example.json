@@ -1,0 +1,12 @@
+﻿{
+  "host": "imap.example.com",
+  "port": 993,
+  "secure": true,
+  "auth": {
+    "user": "registration-bot@example.com",
+    "pass": "app-password-or-mailbox-password"
+  },
+  "mailbox": "INBOX",
+  "maxMessages": 20,
+  "defaultSinceDays": 7
+}

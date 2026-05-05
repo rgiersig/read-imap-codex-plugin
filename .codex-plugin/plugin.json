@@ -1,0 +1,33 @@
+﻿{
+  "name": "read-imap-codex-plugin",
+  "version": "0.1.0",
+  "description": "Read-only IMAP helper for extracting registration links and codes from incoming email.",
+  "author": {
+    "name": "Roland Giersig",
+    "email": "roland@giersig.org",
+    "url": "https://github.com/rgiersig"
+  },
+  "homepage": "https://github.com/rgiersig/read-imap-codex-plugin",
+  "repository": "https://github.com/rgiersig/read-imap-codex-plugin",
+  "license": "MIT",
+  "keywords": ["imap", "email", "registration", "verification", "mcp"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Read IMAP",
+    "shortDescription": "Extract registration links and codes from an IMAP inbox.",
+    "longDescription": "Provides read-only IMAP tools for finding recent registration and verification emails, extracting likely confirmation links and one-time codes, and summarizing matching messages. It does not accept commands from email and does not modify messages.",
+    "developerName": "Roland Giersig",
+    "category": "Productivity",
+    "capabilities": ["Read", "Email"],
+    "websiteURL": "https://github.com/rgiersig/read-imap-codex-plugin",
+    "privacyPolicyURL": "https://github.com/rgiersig/read-imap-codex-plugin#privacy",
+    "termsOfServiceURL": "https://github.com/rgiersig/read-imap-codex-plugin#license",
+    "defaultPrompt": [
+      "Find the latest registration code in my IMAP inbox.",
+      "Look for a confirmation link from this website.",
+      "Summarize recent verification emails."
+    ],
+    "brandColor": "#2563EB"
+  }
+}

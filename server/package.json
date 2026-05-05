@@ -1,0 +1,15 @@
+﻿{
+  "name": "read-imap-codex-plugin-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP server for read-only IMAP registration-code extraction.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "imapflow": "^1.0.191",
+    "mailparser": "^3.7.2"
+  }
+}
