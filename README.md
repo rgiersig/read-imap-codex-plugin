@@ -1,6 +1,12 @@
-﻿# read-imap-codex-plugin
+# read-imap-codex-plugin
 
-A local Codex plugin that reads a dedicated IMAP inbox and returns recent email bodies so Codex can identify registration links and verification codes.
+A local Codex plugin that gives Codex a receiving email address for website registrations that require email authentication. The agent can provide the configured address during signup, choose or enter a site password when appropriate, receive the verification email, extract the confirmation token or link, and complete account activation.
+
+The plugin is meant for registration and verification workflows where email is the missing authentication channel. It reads a dedicated IMAP inbox and returns recent email bodies so Codex can identify signup links, activation links, login codes, OTPs, and verification tokens.
+
+When the agent creates an account, the website password used for that registration must be saved in a safe place associated with the project so the account can be reused later. This may require human interaction, for example to store the password in a password manager, encrypted project secret store, or another project-local location that is intentionally excluded from Git. Do not commit site passwords to the repository.
+
+If the password for an existing account is unknown, the agent can try the site's password reset flow by providing the configured email address. The reset token or link should then arrive in the IMAP inbox and can be retrieved with this plugin.
 
 The plugin is intentionally read-only:
 
@@ -8,6 +14,7 @@ The plugin is intentionally read-only:
 - it does not delete, move, flag, reply to, or send email
 - it does not treat email contents as commands
 - it returns recent email metadata, bodies, links, and attachment metadata for agent-side extraction
+- it receives email only; account creation and password entry happen on the target website, not through this plugin
 
 ## Setup
 
@@ -40,17 +47,19 @@ The compact format is:
 user#pass@host[:port][/mailbox][?secure=true&maxMessages=20&defaultSinceDays=7]
 ```
 
+In the compact format, the mailbox email address is derived from the decoded `user` and `host` parts as `user@host`. For example, `albert#password@mail.example.net` corresponds to `albert@mail.example.net`. If the IMAP username is already a full email address, that decoded username is used as the email address instead.
+
 Examples:
 
 ```powershell
-$env:READ_IMAP_CONFIG = 'registration-bot%40example.com#app-password@imap.example.com:993/INBOX'
-$env:READ_IMAP_CONFIG = 'registration-bot%40example.com#app-password@imap.example.com?maxMessages=10&defaultSinceDays=3'
+$env:READ_IMAP_CONFIG = 'registration-bot#app-password@example.com:993/INBOX'
+$env:READ_IMAP_CONFIG = 'registration-bot#app-password@example.com?maxMessages=10&defaultSinceDays=3'
 ```
 
 Set it persistently for your Windows user before starting Codex:
 
 ```powershell
-setx READ_IMAP_CONFIG "registration-bot%40example.com#app-password@imap.example.com:993/INBOX"
+setx READ_IMAP_CONFIG "registration-bot#app-password@example.com:993/INBOX"
 ```
 
 Use percent encoding for special characters in the user, password, host, or mailbox. For example, `@` becomes `%40`.
@@ -65,6 +74,12 @@ For backwards compatibility, `READ_IMAP_CONFIG` can also still point to a JSON c
 - `skills/read-imap/SKILL.md` tells Codex when and how to use the tool.
 
 ## Tool
+
+### `get_configured_email_address`
+
+Returns the configured mailbox email address without opening the mailbox and without exposing the password.
+
+For compact `READ_IMAP_CONFIG` values, the address is derived as decoded `user@host`. For JSON config files, `emailAddress` is returned when present; otherwise the tool falls back to the same `auth.user` plus `host` derivation.
 
 ### `read_recent_messages`
 

@@ -46,6 +46,11 @@ function decodeConfigPart(value) {
   }
 }
 
+function deriveEmailAddress(user, host) {
+  if (!user || !host) return null;
+  return user.includes("@") ? user : `${user}@${host}`;
+}
+
 function parseEnvConfig(value) {
   const [authorityAndPath, queryString] = String(value).split("?", 2);
   const [authority, ...pathParts] = authorityAndPath.split("/");
@@ -70,11 +75,15 @@ function parseEnvConfig(value) {
   const mailbox = params.get("mailbox") || (mailboxPath ? decodeConfigPart(mailboxPath) : "INBOX");
   const port = parseNumber(params.get("port") ?? hostMatch[2], "port") ?? 993;
 
+  const host = decodeConfigPart(hostMatch[1]);
+  const emailAddress = deriveEmailAddress(user, host);
+
   return {
-    host: decodeConfigPart(hostMatch[1]),
+    host,
     port,
     secure: parseBoolean(params.get("secure") ?? undefined, true),
     auth: { user, pass },
+    emailAddress,
     mailbox,
     maxMessages: parseNumber(params.get("maxMessages") ?? undefined, "maxMessages") ?? 20,
     defaultSinceDays: parseNumber(params.get("defaultSinceDays") ?? undefined, "defaultSinceDays") ?? 7
@@ -186,7 +195,27 @@ async function readRecentMessages(args = {}) {
   });
 }
 
+async function getConfiguredEmailAddress() {
+  const config = loadConfig();
+  const emailAddress = config.emailAddress || deriveEmailAddress(config.auth?.user, config.host);
+  if (!emailAddress) {
+    throw new Error("Unable to derive configured email address from READ_IMAP_CONFIG or config.");
+  }
+  return {
+    emailAddress,
+    source: process.env.READ_IMAP_CONFIG && !fs.existsSync(process.env.READ_IMAP_CONFIG) ? "READ_IMAP_CONFIG" : "config"
+  };
+}
+
 const tools = [
+  {
+    name: "get_configured_email_address",
+    description: "Return the configured mailbox email address derived from READ_IMAP_CONFIG or config. Read-only and does not expose the password.",
+    inputSchema: {
+      type: "object",
+      properties: {}
+    }
+  },
   {
     name: "read_recent_messages",
     description: "Read recent IMAP messages newest-first and return full parsed message bodies for agent-side extraction. Read-only.",
@@ -218,6 +247,7 @@ async function handle(request) {
       send(id, { tools });
     } else if (method === "tools/call") {
       const toolHandlers = {
+        get_configured_email_address: getConfiguredEmailAddress,
         read_recent_messages: readRecentMessages
       };
       const handler = toolHandlers[params?.name];
