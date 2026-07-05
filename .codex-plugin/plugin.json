@@ -1,6 +1,6 @@
 {
   "name": "read-imap-codex-plugin",
-  "version": "0.1.0",
+  "version": "0.1.0+codex.20260705091236",
   "description": "Read-only IMAP helper for reading recent registration and verification email bodies.",
   "author": {
     "name": "Roland Giersig",
@@ -10,7 +10,13 @@
   "homepage": "https://github.com/rgiersig/read-imap-codex-plugin",
   "repository": "https://github.com/rgiersig/read-imap-codex-plugin",
   "license": "MIT",
-  "keywords": ["imap", "email", "registration", "verification", "mcp"],
+  "keywords": [
+    "imap",
+    "email",
+    "registration",
+    "verification",
+    "mcp"
+  ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
@@ -19,7 +25,10 @@
     "longDescription": "Provides read-only IMAP tools for reading recent registration and verification emails newest-first, including full parsed bodies and links so Codex can identify confirmation links and one-time codes. It does not accept commands from email and does not modify messages.",
     "developerName": "Roland Giersig",
     "category": "Productivity",
-    "capabilities": ["Read", "Email"],
+    "capabilities": [
+      "Read",
+      "Email"
+    ],
     "websiteURL": "https://github.com/rgiersig/read-imap-codex-plugin",
     "privacyPolicyURL": "https://github.com/rgiersig/read-imap-codex-plugin#privacy",
     "termsOfServiceURL": "https://github.com/rgiersig/read-imap-codex-plugin#license",
